@@ -1,0 +1,53 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Mapbox popup styling */
+.mapboxgl-popup {
+  max-width: 300px;
+}
+
+.mapboxgl-popup-content {
+  padding: 15px;
+  border-radius: 5px;
+}
+
+.mapboxgl-popup-content h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #1976d2;
+  font-size: 16px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+}
+
+.mapboxgl-popup-content p {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+/* Custom marker styling */
+.defect-marker {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.defect-marker:hover {
+  transform: scale(1.2);
+}
+
+/* Fix for Grid component errors in MUI v7 */
+.MuiGrid-item {
+  display: flex;
+  flex-direction: column;
+}

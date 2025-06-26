@@ -1,0 +1,58 @@
+service: road-metrics-ai
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.9
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  environment:
+    DATABASE_URL: ${env:DATABASE_URL}
+    SECRET_KEY: ${env:SECRET_KEY}
+    AWS_REGION: ${self:provider.region}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+          Resource: "arn:aws:s3:::${self:custom.bucketName}/*"
+
+custom:
+  bucketName: roadmetrics-data-${self:provider.stage}
+  pythonRequirements:
+    dockerizePip: true
+    slim: true
+    layer: true
+
+functions:
+  api:
+    handler: main.handler
+    events:
+      - httpApi:
+          path: /api/{proxy+}
+          method: any
+      - httpApi:
+          path: /health
+          method: get
+      - httpApi:
+          path: /docs
+          method: get
+      - httpApi:
+          path: /openapi.json
+          method: get
+    environment:
+      STAGE: ${self:provider.stage}
+
+  batch_processor:
+    handler: app/services/batch_processor.handler
+    events:
+      - schedule: rate(1 day)
+    environment:
+      STAGE: ${self:provider.stage}
+
+plugins:
+  - serverless-python-requirements
+  - serverless-dotenv-plugin 

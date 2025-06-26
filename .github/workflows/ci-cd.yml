@@ -1,0 +1,234 @@
+name: Road Metrics AI CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:13-3.1
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: roadmetrics_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-mock
+    
+    - name: Run tests
+      run: |
+        cd backend
+        pytest --cov=app --cov-report=xml
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/roadmetrics_test
+        SECRET_KEY: testingsecretkey
+    
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend/coverage.xml
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Run tests
+      run: |
+        cd frontend
+        npm test -- --coverage
+    
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./frontend/coverage/coverage-final.json
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install Python linting dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort
+    
+    - name: Lint Python code
+      run: |
+        cd backend
+        flake8 app
+        black --check app
+        isort --check app
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install Node.js linting dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Lint TypeScript code
+      run: |
+        cd frontend
+        npm run lint
+
+  build-backend:
+    runs-on: ubuntu-latest
+    needs: [test-backend, lint]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Package Lambda functions
+      run: |
+        cd backend
+        mkdir -p dist
+        pip install -t dist .
+        cd dist
+        zip -r ../lambda_package.zip .
+    
+    - name: Upload Lambda package
+      uses: actions/upload-artifact@v3
+      with:
+        name: lambda-package
+        path: backend/lambda_package.zip
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    needs: [test-frontend, lint]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Build frontend
+      run: |
+        cd frontend
+        npm run build
+      env:
+        REACT_APP_API_URL: ${{ secrets.DEV_API_URL }}
+        REACT_APP_MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/build
+
+  deploy-dev:
+    needs: [build-backend, build-frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: Download Lambda package
+      uses: actions/download-artifact@v3
+      with:
+        name: lambda-package
+        path: backend
+    
+    - name: Deploy Lambda functions
+      run: |
+        chmod +x infrastructure/scripts/deploy-lambda.sh
+        infrastructure/scripts/deploy-lambda.sh --stage dev
+    
+    - name: Download frontend build
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/build
+    
+    - name: Deploy frontend
+      run: |
+        chmod +x infrastructure/scripts/deploy-frontend.sh
+        infrastructure/scripts/deploy-frontend.sh --stage dev
+      env:
+        REACT_APP_API_URL: ${{ secrets.DEV_API_URL }}
+        REACT_APP_MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+    
+    - name: Run database migrations
+      run: |
+        cd backend
+        pip install alembic psycopg2-binary
+        alembic upgrade head
+      env:
+        DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }} 
