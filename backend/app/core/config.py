@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Road Metrics AI"
     
     # Database settings
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/roadmetrics")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:Roadmetrics123!@roadmetrics-db.cg1a20yii5gj.us-east-1.rds.amazonaws.com:5432/roadmetrics")
     
     # JWT settings
     SECRET_KEY: str = os.getenv("SECRET_KEY", "supersecretkey")

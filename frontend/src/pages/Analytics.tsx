@@ -39,7 +39,7 @@ ChartJS.register(
 );
 
 // API URL - In production, this would come from environment variables
-const API_URL = 'http://localhost:8000/api';
+const API_URL = process.env.REACT_APP_API_URL + '/defects';
 
 interface DefectStatistics {
   total_count: number;
@@ -60,7 +60,7 @@ const Analytics: React.FC = () => {
   const fetchStatistics = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/defects/statistics/summary`);
+      const response = await axios.get(`${API_URL}/statistics/summary`);
       setStatistics(response.data);
       setLoading(false);
     } catch (err) {

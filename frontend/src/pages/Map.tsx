@@ -4,6 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { Box, Container, Paper, Typography, Button, Modal, TextField, MenuItem, CircularProgress, Switch, FormControlLabel, Snackbar, Alert } from '@mui/material';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
+import api from '../services/api';
 
 // This should be in an environment variable in a real app
 mapboxgl.accessToken = 'pk.eyJ1IjoiYW51aml0Z2giLCJhIjoiY21jYnZyOW5nMDFrdTJqczdhcDJwZXZkbiJ9.U_k89i7LpEEGkjWMxP9Mww';
@@ -38,7 +39,7 @@ const severityLevels = [
 ];
 
 // API URL - In production, this would come from environment variables
-const API_URL = 'http://localhost:8000/api';
+const API_URL = process.env.REACT_APP_API_URL;
 
 const Map: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -442,8 +443,8 @@ const Map: React.FC = () => {
         notes: formData.notes || undefined
       };
       
-      const response = await axios.post(`${API_URL}/defects`, payload);
-      
+      const response = await api.defects.create(payload);
+
       // Add the new defect to the map
       addDefectMarker(response.data);
       

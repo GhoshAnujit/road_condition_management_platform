@@ -16,6 +16,7 @@ from app.schemas.defect import (
     DefectStatistics
 )
 
+# Create API router for defect-related endpoints
 router = APIRouter()
 
 @router.get("/", response_model=List[Defect])
@@ -32,25 +33,42 @@ def get_defects(
 ):
     """
     Retrieve all road defects with optional filtering.
+    
+    Parameters:
+    - skip: Number of records to skip for pagination
+    - limit: Maximum number of records to return
+    - defect_type: Filter by defect type (pothole, crack, etc.)
+    - severity: Filter by severity level
+    - lat_min, lat_max, lng_min, lng_max: Geographic bounding box filters
+    
+    Returns a list of defect objects that match the filter criteria.
     """
-    query = db.query(DefectModel)
-    
-    # Apply filters if provided
-    if defect_type:
-        query = query.filter(DefectModel.defect_type == defect_type)
-    if severity:
-        query = query.filter(DefectModel.severity == severity)
-    
-    # Apply bounding box filter if provided
-    if all([lat_min, lat_max, lng_min, lng_max]):
-        query = query.filter(
-            DefectModel.latitude >= lat_min,
-            DefectModel.latitude <= lat_max,
-            DefectModel.longitude >= lng_min,
-            DefectModel.longitude <= lng_max
-        )
-    
-    return query.offset(skip).limit(limit).all()
+    try:
+        # Start with base query for all defects
+        query = db.query(DefectModel)
+        
+        # Apply filters if provided
+        if defect_type:
+            query = query.filter(DefectModel.defect_type == defect_type)
+        if severity:
+            query = query.filter(DefectModel.severity == severity)
+        
+        # Apply bounding box filter if provided
+        # This allows filtering defects within a specific geographic area
+        if all([lat_min, lat_max, lng_min, lng_max]):
+            query = query.filter(
+                DefectModel.latitude >= lat_min,
+                DefectModel.latitude <= lat_max,
+                DefectModel.longitude >= lng_min,
+                DefectModel.longitude <= lng_max
+            )
+        
+        # Return paginated results
+        return query.offset(skip).limit(limit).all()
+    except Exception as e:
+        # Log any errors for debugging
+        print(e)
+
 
 @router.post("/", response_model=Defect)
 def create_defect(
@@ -59,6 +77,14 @@ def create_defect(
 ):
     """
     Create a new road defect report.
+    
+    Takes a DefectCreate object with:
+    - defect_type: Type of defect (pothole, crack, etc.)
+    - severity: Severity level (low, medium, high, critical)
+    - latitude/longitude: Geographic coordinates
+    - notes: Optional additional information
+    
+    Returns the created defect object with generated ID and timestamps.
     """
     # Create defect with geographic point data
     db_defect = DefectModel(
@@ -66,10 +92,13 @@ def create_defect(
         severity=defect.severity,
         latitude=defect.latitude,
         longitude=defect.longitude,
+        # Create a PostGIS geography point from the coordinates
+        # ST_SetSRID sets the spatial reference system to WGS84 (SRID 4326)
         location=ST_SetSRID(ST_MakePoint(defect.longitude, defect.latitude), 4326),
         notes=defect.notes
     )
     
+    # Add to database, commit the transaction, and refresh to get generated values
     db.add(db_defect)
     db.commit()
     db.refresh(db_defect)
@@ -82,9 +111,16 @@ def get_defect(
 ):
     """
     Get a specific road defect by ID.
+    
+    Parameters:
+    - defect_id: Unique identifier of the defect
+    
+    Returns the defect object if found, or raises a 404 error if not found.
     """
+    # Query the database for the defect with the specified ID
     defect = db.query(DefectModel).filter(DefectModel.id == defect_id).first()
     if not defect:
+        # If no defect is found with that ID, raise a 404 error
         raise HTTPException(status_code=404, detail="Defect not found")
     return defect
 
@@ -96,16 +132,25 @@ def update_defect(
 ):
     """
     Update an existing road defect.
+    
+    Parameters:
+    - defect_id: ID of the defect to update
+    - defect_update: DefectUpdate object with fields to update
+    
+    Only provided fields will be updated. Returns the updated defect object.
     """
+    # Find the defect to update
     db_defect = db.query(DefectModel).filter(DefectModel.id == defect_id).first()
     if not db_defect:
         raise HTTPException(status_code=404, detail="Defect not found")
     
     # Update provided fields
+    # exclude_unset=True ensures only provided fields are included
     update_data = defect_update.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_defect, field, value)
     
+    # Commit changes to database and refresh the object
     db.commit()
     db.refresh(db_defect)
     return db_defect
@@ -117,11 +162,18 @@ def delete_defect(
 ):
     """
     Delete a road defect.
+    
+    Parameters:
+    - defect_id: ID of the defect to delete
+    
+    Returns a success message if the defect was deleted.
     """
+    # Find the defect to delete
     db_defect = db.query(DefectModel).filter(DefectModel.id == defect_id).first()
     if not db_defect:
         raise HTTPException(status_code=404, detail="Defect not found")
     
+    # Delete the defect and commit the transaction
     db.delete(db_defect)
     db.commit()
     return {"success": True}
@@ -133,12 +185,22 @@ def upload_defect_data(
 ):
     """
     Upload road defect data from external source.
+    
+    Takes a DefectUploadPayload with:
+    - vehicle_id: Identifier for the reporting vehicle
+    - timestamp: When the defect was detected
+    - coordinates: [latitude, longitude] array
+    - defect_type: String description of defect type
+    - severity: Optional severity level
+    - notes: Optional additional information
+    
+    Returns the created defect object.
     """
-    # Extract coordinates
+    # Extract coordinates from the payload
     lat, lng = payload.coordinates
     
     # Map external defect type to internal enum
-    # This is a simple mapping that can be expanded based on needs
+    # This allows for flexible input while maintaining data consistency
     defect_type_mapping = {
         "minor pothole": DefectType.POTHOLE,
         "pothole": DefectType.POTHOLE,
@@ -148,6 +210,7 @@ def upload_defect_data(
         "missing manhole": DefectType.MISSING_MANHOLE
     }
     
+    # Get the mapped defect type or default to OTHER if not found
     defect_type = defect_type_mapping.get(payload.defect_type.lower(), DefectType.OTHER)
     
     # Create defect with geographic point data
@@ -162,6 +225,7 @@ def upload_defect_data(
         reported_at=payload.timestamp
     )
     
+    # Add to database, commit the transaction, and refresh to get generated values
     db.add(db_defect)
     db.commit()
     db.refresh(db_defect)
@@ -187,6 +251,8 @@ async def upload_bulk_defect_data(
         },
         ...
     ]
+    
+    Returns a summary of the upload operation, including success count and any errors.
     """
     # Map external defect type to internal enum
     defect_type_mapping = {
@@ -200,9 +266,11 @@ async def upload_bulk_defect_data(
     
     # Read and parse JSON file
     try:
+        # Read the uploaded file content
         contents = await file.read()
         data = json.loads(contents)
         
+        # Validate that the file contains an array of defect objects
         if not isinstance(data, list):
             raise HTTPException(status_code=400, detail="JSON file must contain an array of defect objects")
         
@@ -212,7 +280,7 @@ async def upload_bulk_defect_data(
         
         for idx, entry in enumerate(data):
             try:
-                # Validate required fields
+                # Validate required fields are present
                 if not all(k in entry for k in ["vehicle_id", "timestamp", "coordinates", "defect_type"]):
                     failed_entries.append({
                         "index": idx,
@@ -220,7 +288,7 @@ async def upload_bulk_defect_data(
                     })
                     continue
                 
-                # Parse timestamp
+                # Parse timestamp from ISO format
                 try:
                     timestamp = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
                 except (ValueError, TypeError):
@@ -230,7 +298,7 @@ async def upload_bulk_defect_data(
                     })
                     continue
                 
-                # Validate coordinates
+                # Validate coordinates format and range
                 coordinates = entry["coordinates"]
                 if not isinstance(coordinates, list) or len(coordinates) != 2:
                     failed_entries.append({

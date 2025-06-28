@@ -1,9 +1,10 @@
 import axios, { AxiosError } from 'axios';
 
 // API URL - In production, this would come from environment variables
-const API_URL = 'http://localhost:8000/api';
+const API_URL = process.env.REACT_APP_API_URL;
 
-// Defect types
+// Interface for Defect objects returned from the API
+// Contains all properties of a road defect including metadata
 export interface Defect {
   id: number;
   defect_type: string;
@@ -15,6 +16,8 @@ export interface Defect {
   updated_at?: string;
 }
 
+// Interface for creating a new defect
+// Contains only the properties needed to create a defect
 export interface DefectCreate {
   defect_type: string;
   severity: string;
@@ -23,6 +26,8 @@ export interface DefectCreate {
   notes?: string;
 }
 
+// Interface for defect statistics data
+// Used for analytics and dashboard visualizations
 export interface DefectStatistics {
   total_count: number;
   by_type: Record<string, number>;
@@ -30,12 +35,16 @@ export interface DefectStatistics {
   by_time: Record<string, number>;
 }
 
+// Generic API response wrapper
+// Provides consistent structure for all API responses
+// Includes data and optional error message
 export interface ApiResponse<T> {
   data: T;
   error?: string;
 }
 
-// Create axios instance with common config
+// Create axios instance with common configuration
+// Uses the base API URL and sets default headers
 const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
@@ -43,10 +52,13 @@ const apiClient = axios.create({
   },
 });
 
-// API service
+// API service object with methods for all API operations
+// Organized by resource type (defects)
 const api = {
-  // Defect endpoints
+  // Defect endpoints for CRUD operations and analytics
   defects: {
+    // Get all defects
+    // Returns an array of defect objects
     getAll: async (): Promise<ApiResponse<Defect[]>> => {
       try {
         console.log('Making API request to:', `${API_URL}/defects`);
@@ -54,6 +66,7 @@ const api = {
         console.log('API response data:', response.data);
         return { data: response.data };
       } catch (error) {
+        // Detailed error logging for debugging
         console.error('Error fetching defects:', error);
         const axiosError = error as AxiosError;
         if (axiosError.response) {
@@ -65,6 +78,7 @@ const api = {
         } else {
           console.error('Error message:', axiosError.message);
         }
+        // Return empty array with error message for UI
         return {
           data: [],
           error: 'Failed to fetch defects. Please try again later.',
@@ -72,6 +86,7 @@ const api = {
       }
     },
 
+    // Get a specific defect by ID
     getById: async (id: number): Promise<ApiResponse<Defect>> => {
       try {
         const response = await apiClient.get(`/defects/${id}`);
@@ -85,6 +100,8 @@ const api = {
       }
     },
 
+    // Create a new defect
+    // Takes a DefectCreate object and returns the created Defect
     create: async (defect: DefectCreate): Promise<ApiResponse<Defect>> => {
       try {
         const response = await apiClient.post('/defects', defect);
@@ -98,6 +115,8 @@ const api = {
       }
     },
 
+    // Update an existing defect
+    // Takes defect ID and partial defect data to update
     update: async (id: number, defect: Partial<DefectCreate>): Promise<ApiResponse<Defect>> => {
       try {
         const response = await apiClient.put(`/defects/${id}`, defect);
@@ -111,6 +130,7 @@ const api = {
       }
     },
 
+    // Delete a defect by ID
     delete: async (id: number): Promise<ApiResponse<{ success: boolean }>> => {
       try {
         const response = await apiClient.delete(`/defects/${id}`);
@@ -124,6 +144,7 @@ const api = {
       }
     },
 
+    // Get defect statistics for analytics
     getStatistics: async (): Promise<ApiResponse<DefectStatistics>> => {
       try {
         const response = await apiClient.get('/defects/statistics/summary');
@@ -142,6 +163,8 @@ const api = {
       }
     },
 
+    // Upload defect data from external sources
+    // Takes a payload with coordinates and metadata
     uploadData: async (payload: any): Promise<ApiResponse<Defect>> => {
       try {
         const response = await apiClient.post('/defects/upload', payload);

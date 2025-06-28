@@ -51,7 +51,7 @@ const Dashboard: React.FC = () => {
         // Try direct fetch first for debugging
         try {
           console.log('Initial fetch: Trying direct fetch first...');
-          const directResponse = await fetch('http://localhost:8000/api/defects');
+          const directResponse = await fetch(process.env.REACT_APP_API_URL + '/defects');
           console.log('Initial fetch: Direct fetch status:', directResponse.status);
           const directData = await directResponse.json();
           console.log('Initial fetch: Direct fetch data:', directData);
@@ -330,7 +330,7 @@ const Dashboard: React.FC = () => {
                     onClick={() => {
                       console.log('Direct fetch triggered');
                       setLoading(true);
-                      fetch('http://localhost:8000/api/defects')
+                      fetch(process.env.REACT_APP_API_URL + '/defects')
                         .then(response => {
                           console.log('Direct fetch status:', response.status);
                           return response.json();
